@@ -24,6 +24,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.tavla_policy as tavla_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
+import openpi.policies.fr3_policy as fr3_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
@@ -509,6 +510,81 @@ class LeRobotTavlaDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
+class LeRobotFR3TavlaDataConfig(DataConfigFactory):
+    """Single-arm Franka FR3 (CompVLA datasets, joint layout) for TA-VLA.
+
+    Camera mapping (chosen by convention; inference must match):
+        observation.images.front        -> cam_high
+        observation.images.end_effector -> cam_right_wrist  (actual wrist cam)
+        observation.images.front_right  -> cam_left_wrist   (auxiliary scene)
+
+    State:  observation.state  -> [8] (joint_1..7 + gripper)
+    Effort: observation.effort -> [7] joint torques (loaded only if effort_history non-empty)
+    Action: action             -> [8] (joint_1..7 + gripper_cmd)
+    """
+
+    use_delta_joint_actions: bool = True
+    default_prompt: str | None = None
+    padding_stat: bool = False
+
+    # Same effort-history semantics as LeRobotTavlaDataConfig.
+    effort_history: Sequence[int] = ()
+
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(default=_transforms.Group())
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    def __post_init__(self):
+        images = {
+            "cam_high":        "observation.images.front",
+            "cam_right_wrist": "observation.images.end_effector",
+            "cam_left_wrist":  "observation.images.front_right",
+        }
+        repack_dict = {
+            "images": images,
+            "state":  "observation.state",
+            "actions": "action",
+        }
+        if self.default_prompt is None:
+            repack_dict["prompt"] = "prompt"
+        if self.effort_history:
+            repack_dict["effort"] = "observation.effort"
+        object.__setattr__(
+            self,
+            "repack_transforms",
+            _transforms.Group(inputs=[_transforms.RepackTransform(repack_dict)]),
+        )
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[tavla_policy.TavlaInputs(action_dim=model_config.action_dim)],
+            outputs=[fr3_policy.Fr3Outputs()],
+        )
+        if self.use_delta_joint_actions:
+            # 7 joint dims to deltas, gripper absolute.
+            delta_action_mask = _transforms.make_bool_mask(7, -1)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        if self.default_prompt and isinstance(self.repo_id, list):
+            raise ValueError("Using default prompt when using multiple datasets is incorrect.")
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+            effort_history=self.effort_history,
+            prompt_from_task=(self.default_prompt is None),
+        )
+
+
+@dataclasses.dataclass(frozen=True)
 class TrainConfig:
     # Name of the config. Must be unique. Will be used to reference this config.
     name: tyro.conf.Suppress[str]
@@ -868,6 +944,110 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ).get_freeze_filter(),
         ema_decay=None,
+    ),
+    #
+    # Fine-tuning Franka FR3 (single-arm) configs.
+    #
+    TrainConfig(
+        name="pi0_fr3_pivot_smoke",
+        project_name="ta-vla-fr3",
+        # effort_type=NO: data pipeline does not emit `effort` and the
+        # projectors are not constructed -- validates the FR3 data path
+        # end-to-end before touching torque-aware variants.
+        # LoRA variants + horizon=25 keep activation memory comfortably under
+        # 24GB even when other users are holding ~5GB on the same card.
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.NO,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/pivot_joint_train_100",
+            default_prompt="Push the black box to stand it up",
+            base_config=DataConfig(local_files_only=True),
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    #
+    # TA-VLA on Erase_whiteboard (FR3) with EXPERT_HIS_C_FUT (Dec-H + future-effort).
+    #
+    # effort_dim=7 is required because FR3 records 7 joint torques (default 14
+    # is ALOHA dual-arm); a mismatch crashes effort_proj_in and the augmented
+    # action_in/out_proj. effort_history holds *past* offsets only -- the data
+    # loader auto-appends `action_horizon` future frames for *_FUT variants
+    # (data_loader.py:116-118), and pi0.py:334-339 splits them off as the
+    # future-effort target.
+    TrainConfig(
+        name="pi0_fr3_erase_whiteboard_effort_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/erase_whiteboard_joint_train_100",
+            default_prompt="Erase the whiteboard",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_erase_whiteboard_effort",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/erase_whiteboard_joint_train_100",
+            default_prompt="Erase the whiteboard",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        # 62 epochs over fr3/erase_whiteboard_joint_train_100 (32,273 frames):
+        # floor(32273 / 8) = 4034 steps/epoch * 62 = 250,108.
+        num_train_steps=250_108,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
     ),
     # This config is used to demonstrate how to train on a simple simulated environment.
     TrainConfig(
