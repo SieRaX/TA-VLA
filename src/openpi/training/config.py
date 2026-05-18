@@ -556,8 +556,15 @@ class LeRobotFR3TavlaDataConfig(DataConfigFactory):
 
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        effort_dim = getattr(model_config, "effort_dim", None)
+        # FR3 dataset records 8 effort channels (7 joints + gripper_effort) but the
+        # model only consumes the joint torques, so trim the trailing gripper channel.
+        input_xforms: list[_transforms.DataTransformFn] = []
+        if self.effort_history and effort_dim is not None:
+            input_xforms.append(tavla_policy.SliceEffort(dim=effort_dim))
+        input_xforms.append(tavla_policy.TavlaInputs(action_dim=model_config.action_dim))
         data_transforms = _transforms.Group(
-            inputs=[tavla_policy.TavlaInputs(action_dim=model_config.action_dim)],
+            inputs=input_xforms,
             outputs=[fr3_policy.Fr3Outputs()],
         )
         if self.use_delta_joint_actions:
@@ -998,7 +1005,7 @@ _CONFIGS = [
             effort_dim=7,
         ),
         data=LeRobotFR3TavlaDataConfig(
-            repo_id="fr3/erase_whiteboard_joint_train_100",
+            repo_id="fr3/erase_whiteboard_tavla_train_100",
             default_prompt="Erase the whiteboard",
             effort_history=tuple(2 * i - 18 for i in range(10)),
             base_config=DataConfig(local_files_only=True),
@@ -1028,7 +1035,7 @@ _CONFIGS = [
             effort_dim=7,
         ),
         data=LeRobotFR3TavlaDataConfig(
-            repo_id="fr3/erase_whiteboard_joint_train_100",
+            repo_id="fr3/erase_whiteboard_tavla_train_100",
             default_prompt="Erase the whiteboard",
             effort_history=tuple(2 * i - 18 for i in range(10)),
             base_config=DataConfig(local_files_only=True),
@@ -1042,7 +1049,7 @@ _CONFIGS = [
         ).get_freeze_filter(),
         ema_decay=None,
         batch_size=8,
-        # 62 epochs over fr3/erase_whiteboard_joint_train_100 (32,273 frames):
+        # 62 epochs over fr3/erase_whiteboard_tavla_train_100 (32,273 frames):
         # floor(32273 / 8) = 4034 steps/epoch * 62 = 250,108.
         num_train_steps=250_108,
         log_interval=1,

@@ -76,6 +76,23 @@ class TavlaInputs(transforms.DataTransformFn):
 
 
 @dataclasses.dataclass(frozen=True)
+class SliceEffort(transforms.DataTransformFn):
+    """Keep only the first `dim` channels of observation.effort.
+
+    Used when the dataset records more effort channels than the model expects
+    (e.g. FR3 datasets that append a `gripper_effort` channel to the 7 joint torques).
+    """
+
+    dim: int
+
+    def __call__(self, data: dict) -> dict:
+        if "effort" in data:
+            data = dict(data)
+            data["effort"] = np.asarray(data["effort"])[..., : self.dim]
+        return data
+
+
+@dataclasses.dataclass(frozen=True)
 class TavlaOutputs(transforms.DataTransformFn):
     """Outputs for the Tavla policy."""
 

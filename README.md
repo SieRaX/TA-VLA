@@ -1,102 +1,139 @@
-<div align="center">
-<h2>TA-VLA: Elucidating the Design Space of <br>
-Torque-aware Vision-Language-Action Models</h2>
+# TA-VLA — Setup & Training
 
-  **CoRL 2025**
+This README covers (1) setting up the environment from scratch and (2) training the `pi0_fr3_erase_whiteboard_effort` config on the `fr3/erase_whiteboard_tavla_train_100` dataset.
 
-**Zongzheng Zhang**<sup>*1</sup> · [**Haobo Xu**](https://hsu1023.github.io/)<sup>*2</sup> · **Zhuo Yang**<sup>*1</sup> ·<br>
-**Chenghao Yue**<sup>1</sup> · **Zehao Lin**<sup>1</sup> · [**Huan-ang Gao**](https://c7w.tech/)<sup>1</sup>· [**Ziwei Wang**](https://ziweiwangthu.github.io/)<sup>3</sup> .  [**Hao Zhao**](https://sites.google.com/view/fromandto/)<sup>1,2</sup><br>
+For project background, the torque input-type design space, dataset format, deployment notes, and citation, see [`README_original.md`](README_original.md).
 
-<sup>1</sup> Beijing Academy of Artificial Intelligence (BAAI), <br> 
-<sup>2</sup> Institute for AI Industry Research (AIR), Tsinghua University, <br>
-<sup>3</sup> Nanyang Technological University<br>
-<sub>(* indicates equal contribution)</sub><br>
+---
 
-[**Project Page**](https://zzongzheng0918.github.io/Torque-Aware-VLA.github.io/) | [**arXiv**](https://arxiv.org/abs/2509.07962) | [**Code**](https://github.com/ZZongzheng0918/TA-VLA) 
-</div>
+## 1. Environment setup
 
-## TA-VLA
-This repository provides the implementation of **TA-VLA: Elucidating the Design Space of Torque-aware Vision-Language-Action Models** on [**openpi**](https://github.com/Physical-Intelligence/openpi).
-It is branched from the original repository at commit `cd82848`.
-Please refer to the original repository for environment setup and training details.
-The following focuses only on the differences from the upstream repository.
+The instructions below mirror the upstream openpi setup. Requirements:
 
-## Torque Input Types
-The file `src/openpi/shared/effort_type.py` defines the ways in which torque information is fed into openpi, covering all the experiments described in the paper.  
-The types are:
+- Linux with an NVIDIA GPU (CUDA 12; tested on a 24 GB RTX 4090)
+- Python ≥ 3.11 (provisioned automatically by `uv`)
+- `git`, `git-lfs`, and `curl`
 
-- **NO**  
-  No effort is used, but `TavlaInputs` still processes it for `norm_stats` computation.  
-  Used for the baseline model.
+### 1.1 Install `uv`
 
-- **STATE**  
-  Inserts the current effort into the last `state[-14:]` so that it will be considered by the action expert.  
-  Corresponds to the *DePre* method in Section 4.1.
+The project uses [`uv`](https://docs.astral.sh/uv/) as its package manager.
 
-- **LLM**  
-  Projects the current effort into a token and passes it to the LLM along with image and language tokens.  
-  Projector MLP: `Linear(in, 2*w) -> swish -> Linear(2*w, w)`.  
-  Corresponds to the *Enc* method in Section 4.1.
-
-- **LLM_HIS_C**  
-  Concatenates current and historical effort, projects it into a token, and passes it to the LLM.  
-  Corresponds to *Enc-1* in Section 4.2.
-
-- **LLM_HIS_T**  
-  Projects current and historical effort into tokens separately and passes them to the LLM.  
-  Corresponds to *Enc-H* in Section 4.2.
-
-- **EXPERT**  
-  Projects effort into a token and passes it to the action expert (a component of the LLM) together with state and action tokens.  
-  Corresponds to *DePost* in Section 4.1.
-
-- **EXPERT_HIS_C**  
-  Concatenates current and historical effort, projects it into a token, and passes it to the action expert.  
-  Corresponds to *Dec-1* in Section 4.2.
-
-- **EXPERT_HIS_T**  
-  Projects current and historical effort into tokens separately and passes them to the action expert.  
-  Corresponds to *Dec-H* in Section 4.2.
-
-- **EXPERT_FUT**  
-  Not an input type per se, but predicts future effort along with actions.  
-  Corresponds to Sections 5 and 6 ($π_0$ + obj).
-
-- **EXPERT_HIS_C_FUT**  
-  Inputs concatenated historical effort to the action expert and outputs future effort.  
-  Corresponds to Sections 5 and 6 ($π_0$ + obs + obj).
-
-- **EXPERT_HIS_C_L_FUT**  
-  Inputs concatenated historical effort as the last token and outputs future effort.  
-  A positional variant of the previous type, tested without performance improvement.
-
-Note: These torque-handling implementations have only been tested on $π_0$ and may not be compatible with $π_0$-FAST.
-
-## Dataset
-As in the original openpi implementation, we use datasets in the standard **lerobot** format.
-The difference is that we expect an additional field `observation.effort` storing the per-frame joint torque, analogous to how `observation.state` stores per-frame joint angles.
-
-## Training
-Refer to the example configurations provided in `src/openpi/training/config.py`.
-When using effort inputs, be sure to pass the corresponding `effort_history` parameter.
-
-## Deployment
-For data collection and model deployment, we use a modified version of the AgileX official example code.
-In addition to reading torque values from the ROS topic, this version maintains a historical torque buffer for policies that require past torque information.
-
-## Citation
-If you find this project useful, feel free to cite our work!
-<div style="display:flex;">
-<div>
-
-```bibtex
-@article{zhang2025ta,
-  title={TA-VLA: Elucidating the Design Space of Torque-aware Vision-Language-Action Models},
-  author={Zhang, Zongzheng and Xu, Haobo and Yang, Zhuo and Yue, Chenghao and Lin, Zehao and Gao, Huan-ang and Wang, Ziwei and Zhao, Hao},
-  journal={arXiv preprint arXiv:2509.07962},
-  year={2025}
-}
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Reload your shell, or:
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
+### 1.2 Clone the repository
 
+This fork uses git submodules under `third_party/` (`aloha`, `libero`). Clone recursively:
 
+```bash
+git clone --recurse-submodules https://github.com/SieRaX/TA-VLA.git
+cd TA-VLA
+```
+
+If you already cloned without submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+### 1.3 Install Python dependencies
+
+`GIT_LFS_SKIP_SMUDGE=1` avoids pulling large LFS blobs from transitive deps during dependency resolution; the openpi base checkpoint is fetched separately at training time from `s3://openpi-assets/`.
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+```
+
+This creates a `.venv/` and installs JAX (with CUDA 12 wheels), Flax, the openpi package, and the workspace member `packages/openpi-client`. Verify the install:
+
+```bash
+uv run python -c "import jax; print(jax.devices())"
+```
+
+You should see at least one `CudaDevice`.
+
+### 1.4 (Optional) pre-commit hooks for development
+
+```bash
+uv run pre-commit install
+```
+
+### 1.5 Prepare the dataset
+
+Training expects the dataset in standard **lerobot** format with an additional `observation.effort` field (per-frame joint torque, parallel to `observation.state`). Place the dataset under your `LEROBOT_HOME` so the resolved path is `$LEROBOT_HOME/fr3/erase_whiteboard_tavla_train_100/`.
+
+For example, the layout used in this repo:
+
+```bash
+export LEROBOT_HOME=/PublicSSD/cspark/TA-VLA/datasets/lerobot
+ls "$LEROBOT_HOME/fr3/erase_whiteboard_tavla_train_100"
+# meta/  data/  videos/   (standard lerobot layout)
+```
+
+The `fr3/` prefix is required because HuggingFace `repo_id` strings allow only one slash; the directory can be a symlink to the actual data location.
+
+---
+
+## 2. Train on `fr3/erase_whiteboard_tavla_train_100`
+
+The config `pi0_fr3_erase_whiteboard_effort` (defined in `src/openpi/training/config.py`) finetunes π₀ with LoRA on the FR3 erase-whiteboard dataset using torque input + future-torque prediction (`EffortType.EXPERT_HIS_C_FUT`, `effort_dim=7`, 10-frame history). A smaller smoke config `pi0_fr3_erase_whiteboard_effort_smoke` exists to validate the pipeline in ~200 steps before launching the real run.
+
+### 2.1 One-shot script
+
+The convenience script `scripts/fr3/train_fr3_erase_whiteboard_effort.sh` runs the full two-phase pipeline (smoke → real):
+
+```bash
+cd /path/to/TA-VLA
+bash scripts/fr3/train_fr3_erase_whiteboard_effort.sh
+```
+
+The script handles `LEROBOT_HOME`, GPU pinning, JAX memory fraction, and norm-stats caching automatically.
+
+### 2.2 Manual step-by-step
+
+If you'd rather run each step yourself, the four commands below are equivalent to the script. Adjust `LEROBOT_HOME` and `CUDA_VISIBLE_DEVICES` to your machine.
+
+```bash
+cd /path/to/TA-VLA
+
+# Environment
+export LEROBOT_HOME=/PublicSSD/cspark/TA-VLA/datasets/lerobot
+export CUDA_VISIBLE_DEVICES=0
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.95
+
+# [1/4] Smoke: compute norm stats (only needed once; cached under assets/)
+uv run python scripts/compute_norm_stats.py \
+    --config-name=pi0_fr3_erase_whiteboard_effort_smoke
+
+# [2/4] Smoke: 200-step run, batch=1, wandb off
+uv run python scripts/train.py \
+    pi0_fr3_erase_whiteboard_effort_smoke \
+    --exp_name="smoke_$(date +%Y%m%d_%H%M%S)" \
+    --overwrite
+
+# [3/4] Real: compute norm stats (separate file, keyed by config name)
+uv run python scripts/compute_norm_stats.py \
+    --config-name=pi0_fr3_erase_whiteboard_effort
+
+# [4/4] Real: 250k-step finetune, batch=8, wandb on
+uv run python scripts/train.py \
+    pi0_fr3_erase_whiteboard_effort \
+    --exp_name="run_$(date +%Y%m%d_%H%M%S)"
+```
+
+Notes:
+
+- `scripts/train.py` requires `batch_size % jax.device_count() == 0`. The default `batch_size=8` runs on a single GPU; if you use multiple, ensure 8 is divisible by the device count or override `--batch_size`.
+- Checkpoints land under `checkpoints/pi0_fr3_erase_whiteboard_effort/<exp_name>/`. The wandb run ID is written to `wandb_id.txt` inside that directory and reused on resume.
+- The real config trains for 250,108 steps (~62 epochs over the 32,273-frame dataset) and saves every 5,000 steps.
+
+### 2.3 Serve the trained policy
+
+```bash
+uv run python scripts/serve_policy.py policy:checkpoint \
+    --policy.config=pi0_fr3_erase_whiteboard_effort \
+    --policy.dir=checkpoints/pi0_fr3_erase_whiteboard_effort/<exp_name>/<step>
+```
