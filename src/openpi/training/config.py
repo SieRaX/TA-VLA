@@ -1123,6 +1123,140 @@ _CONFIGS = [
         save_interval=5_000,
         wandb_enabled=True,
     ),
+    #
+    # TA-VLA on Button_push (FR3) -- same EXPERT_HIS_C_FUT recipe as pivot_box.
+    # Dataset: fr3/button_push_tavla_train_100 (symlink to Button_push/tavla/train_100),
+    # 17,749 frames, 100 episodes, 10 fps, same 7-DoF + gripper torque schema.
+    #
+    TrainConfig(
+        name="pi0_fr3_button_push_effort_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/button_push_tavla_train_100",
+            default_prompt="Press down the nozzle of the soap bottle",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_button_push_effort",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/button_push_tavla_train_100",
+            default_prompt="Press down the nozzle of the soap bottle",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        # 62 epochs over fr3/button_push_tavla_train_100 (17,749 frames):
+        # floor(17749 / 8) = 2218 steps/epoch * 62 = 137,516.
+        num_train_steps=137_516,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
+    ),
+    #
+    # TA-VLA on PnP_fixed (FR3) -- same EXPERT_HIS_C_FUT recipe as pivot_box.
+    # Dataset: fr3/pnp_fixed_tavla_train_100 (symlink to PnP_fixed/tavla/train_100),
+    # 22,051 frames, 100 episodes, 10 fps, same 7-DoF + gripper torque schema.
+    #
+    TrainConfig(
+        name="pi0_fr3_pnp_fixed_effort_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/pnp_fixed_tavla_train_100",
+            default_prompt="Pick the red cube and place it centered on top of the yellow cube",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_pnp_fixed_effort",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/pnp_fixed_tavla_train_100",
+            default_prompt="Pick the red cube and place it centered on top of the yellow cube",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        # 62 epochs over fr3/pnp_fixed_tavla_train_100 (22,051 frames):
+        # floor(22051 / 8) = 2756 steps/epoch * 62 = 170,872.
+        num_train_steps=170_872,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
+    ),
     # This config is used to demonstrate how to train on a simple simulated environment.
     TrainConfig(
         name="pi0_aloha_sim",
