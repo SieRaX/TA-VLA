@@ -1257,6 +1257,73 @@ _CONFIGS = [
         save_interval=5_000,
         wandb_enabled=True,
     ),
+    #
+    # TA-VLA on Peg_in_hole (FR3) -- same EXPERT_HIS_C_FUT recipe as pivot_box.
+    # Dataset: fr3/peg_in_hole_tavla_train_100 (symlink to Peg_in_hole/tavla/train_100),
+    # 33,624 frames, 100 episodes, 10 fps, same 7-DoF + gripper torque schema.
+    #
+    TrainConfig(
+        name="pi0_fr3_peg_in_hole_effort_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/peg_in_hole_tavla_train_100",
+            default_prompt="Insert the rectangular wooden peg into the rectangular hole",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_peg_in_hole_effort",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_HIS_C_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/peg_in_hole_tavla_train_100",
+            default_prompt="Insert the rectangular wooden peg into the rectangular hole",
+            effort_history=tuple(2 * i - 18 for i in range(10)),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        # 62 epochs over fr3/peg_in_hole_tavla_train_100 (33,624 frames):
+        # floor(33624 / 8) = 4203 steps/epoch * 62 = 260,586.
+        num_train_steps=260_586,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
+    ),
     # This config is used to demonstrate how to train on a simple simulated environment.
     TrainConfig(
         name="pi0_aloha_sim",
