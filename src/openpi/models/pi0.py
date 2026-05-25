@@ -177,7 +177,7 @@ class Pi0(_model.BaseModel):
         if self.effort_type in (EffortType.LLM, EffortType.LLM_HIS_C, EffortType.LLM_HIS_T):
             self.effort_proj_in = nnx.Linear(config.effort_dim_in, 2 * paligemma_config.width, rngs=rngs)
             self.effort_proj_out = nnx.Linear(2 * paligemma_config.width, paligemma_config.width, rngs=rngs)
-        elif self.effort_type in (EffortType.EXPERT, EffortType.EXPERT_HIS_C, EffortType.EXPERT_HIS_T, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        elif self.effort_type in (EffortType.EXPERT, EffortType.EXPERT_HIS_C, EffortType.EXPERT_HIS_T, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             self.effort_proj_in = nnx.Linear(config.effort_dim_in, 2 * action_expert_config.width, rngs=rngs)
             self.effort_proj_out = nnx.Linear(2 * action_expert_config.width, action_expert_config.width, rngs=rngs)
         else:
@@ -187,7 +187,7 @@ class Pi0(_model.BaseModel):
         self.action_time_mlp_in = nnx.Linear(2 * action_expert_config.width, action_expert_config.width, rngs=rngs)
         self.action_time_mlp_out = nnx.Linear(action_expert_config.width, action_expert_config.width, rngs=rngs)
 
-        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             self.action_in_proj = nnx.Linear(config.action_dim + config.effort_dim, action_expert_config.width, rngs=rngs)
             self.action_out_proj = nnx.Linear(action_expert_config.width, config.action_dim + config.effort_dim, rngs=rngs)
         else:
@@ -209,9 +209,9 @@ class Pi0(_model.BaseModel):
         
         if ((mode == "prefix" and self.effort_type in (EffortType.LLM, EffortType.LLM_HIS_C, EffortType.LLM_HIS_T)) or
             (mode == "suffix" and self.effort_type in (EffortType.EXPERT, EffortType.EXPERT_HIS_C, EffortType.EXPERT_HIS_T,
-                                                       EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT))):
-            
-            if self.effort_type in (EffortType.LLM, EffortType.EXPERT):
+                                                       EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT))):
+
+            if self.effort_type in (EffortType.LLM, EffortType.EXPERT, EffortType.EXPERT_IN_FUT):
                 effort_token = self._project_effort(obs.effort[:, -1])[:, None, :] # assert last offset is 0(current)
                 tokens_list.append(effort_token)
                 input_mask_list.append(jnp.ones(effort_token.shape[:2], dtype=jnp.bool_))
@@ -331,7 +331,7 @@ class Pi0(_model.BaseModel):
         preprocess_rng, noise_rng, time_rng = jax.random.split(rng, 3)
         observation = _model.preprocess_observation(preprocess_rng, observation, train=train, effort_type=self.effort_type)
 
-        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             future_steps = actions.shape[1]
             future_effort = observation.effort[:, -future_steps:, :]
             assert actions.shape[-1] == self.action_dim
@@ -360,7 +360,7 @@ class Pi0(_model.BaseModel):
         else:
             v_t = self.action_out_proj(suffix_out[:, -self.action_horizon-1:-1])
 
-        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             action_loss = jnp.mean(jnp.square(v_t[..., :self.action_dim] - u_t[..., :self.action_dim]), axis=-1)
             effort_loss = jnp.mean(jnp.square(v_t[..., self.action_dim:] - u_t[..., self.action_dim:]), axis=-1)
             return action_loss + 0.1 * effort_loss
@@ -380,7 +380,7 @@ class Pi0(_model.BaseModel):
         # distribution. yes, this is the opposite of the pi0 paper, and I'm sorry.
         dt = -1.0 / num_steps
         batch_size = observation.state.shape[0]
-        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim + self.effort_dim))
         else:
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
@@ -431,7 +431,7 @@ class Pi0(_model.BaseModel):
 
         x_0, _ = jax.lax.while_loop(cond, step, (noise, 1.0))
 
-        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+        if self.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
             x_0 = x_0[..., :self.action_dim]
 
         return x_0

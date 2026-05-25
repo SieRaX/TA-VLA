@@ -113,7 +113,7 @@ def create_dataset(data_config: _config.DataConfig, model_config: _model.BaseMod
     if data_config.effort_history:
         delta_timestamps["observation.effort"] = [t / dataset_meta.fps for t in data_config.effort_history]
 
-    if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
+    if model_config.effort_type in (EffortType.EXPERT_FUT, EffortType.EXPERT_IN_FUT, EffortType.EXPERT_HIS_C_FUT, EffortType.EXPERT_HIS_C_L_FUT):
         delta_timestamps.setdefault("observation.effort", [])
         delta_timestamps["observation.effort"] += [(t + 1) / dataset_meta.fps for t in range(model_config.action_horizon)]
     

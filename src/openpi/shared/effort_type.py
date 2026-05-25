@@ -26,6 +26,9 @@ class EffortType(Enum):
     """Project current and history effort into token respectively and pass to action expert."""
     EXPERT_FUT = auto()
     """This is not an effort input type, but to predict future effort along with actions."""
+    EXPERT_IN_FUT = auto()
+    """DePost + future-effort prediction: project current effort into a token
+    passed to the action expert AND predict future effort alongside actions."""
     EXPERT_HIS_C_FUT = auto()
     """Input concated history effort to action expert and output future effort."""
     EXPERT_HIS_C_L_FUT = auto()
