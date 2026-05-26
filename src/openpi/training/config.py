@@ -1561,6 +1561,119 @@ _CONFIGS = [
         save_interval=5_000,
         wandb_enabled=True,
     ),
+    #
+    # TA-VLA on Dispense (FR3) -- same EXPERT_IN_FUT recipe as peg_in_hole.
+    # Dataset: fr3/dispense_tavla_train_100 (symlink to Dispense/tavla/train_100),
+    # 22,682 frames, 100 episodes, 10 fps, same 7-DoF + gripper torque schema.
+    #
+    TrainConfig(
+        name="pi0_fr3_dispense_effort_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_IN_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/dispense_tavla_train_100",
+            default_prompt="Press the button on the cup dispenser",
+            effort_history=(0,),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_dispense_effort",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_IN_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/dispense_tavla_train_100",
+            default_prompt="Press the button on the cup dispenser",
+            effort_history=(0,),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        freeze_filter=pi0.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        # 62 epochs over fr3/dispense_tavla_train_100 (22,682 frames):
+        # floor(22682 / 8) = 2835 steps/epoch * 62 = 175,770.
+        num_train_steps=175_770,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
+    ),
+    TrainConfig(
+        name="pi0_fr3_dispense_effort_full_smoke",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_IN_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/dispense_tavla_train_100",
+            default_prompt="Press the button on the cup dispenser",
+            effort_history=(0,),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        batch_size=1,
+        num_train_steps=200,
+        log_interval=10,
+        save_interval=200,
+        wandb_enabled=False,
+    ),
+    TrainConfig(
+        name="pi0_fr3_dispense_effort_full",
+        project_name="ta-vla-fr3",
+        model=pi0.Pi0Config(
+            action_horizon=25,
+            effort_type=EffortType.EXPERT_IN_FUT,
+            effort_dim=7,
+        ),
+        data=LeRobotFR3TavlaDataConfig(
+            repo_id="fr3/dispense_tavla_train_100",
+            default_prompt="Press the button on the cup dispenser",
+            effort_history=(0,),
+            base_config=DataConfig(local_files_only=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        batch_size=32,
+        num_train_steps=100_000,
+        log_interval=1,
+        save_interval=5_000,
+        wandb_enabled=True,
+    ),
     # This config is used to demonstrate how to train on a simple simulated environment.
     TrainConfig(
         name="pi0_aloha_sim",
